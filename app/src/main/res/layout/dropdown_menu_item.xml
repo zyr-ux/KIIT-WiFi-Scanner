@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<TextView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dropdown_text"
+    style="@style/TextAppearance.Material3.BodyLarge"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp"
+    android:textColor="?attr/colorOnSurface"
+    android:background="@android:color/transparent"
+    android:gravity="center_vertical"/>
