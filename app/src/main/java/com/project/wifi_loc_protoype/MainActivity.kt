@@ -37,6 +37,7 @@ import com.project.wifi_loc_protoype.utils.PermissionHelper
 import com.project.wifi_loc_protoype.utils.PermissionResultCallback
 import com.project.wifi_loc_protoype.utils.ScanRecord
 import com.project.wifi_loc_protoype.utils.ScanStorage
+import org.json.JSONArray
 
 class MainActivity : AppCompatActivity() {
     private var binding: ActivityMainBinding? = null
@@ -45,7 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var latitude: Double = 0.0
     private val scanRecords: MutableList<ScanRecord> = mutableListOf()
     private val allBSSIDs: MutableSet<String> = mutableSetOf()
-    private var scanIntervalMillis = 1000L // change this to change the scan interval timing
+    private var scanIntervalMillis = 2000L // change this to change the scan interval timing
     private val handler = android.os.Handler(Looper.getMainLooper())
     private var scanRepeater: Runnable? = null
     private var isScanning = false
@@ -53,12 +54,7 @@ class MainActivity : AppCompatActivity() {
     private var building: String = "KP-5"
     private var wifiSSID: String = "KIIT-WIFI-NET."
     private lateinit var selected: String
-    private val items = listOf(
-        "SE Washroom", "East Stairs", "EW-S Corridor 1","EW-S Corridor 2",
-        "SW Washroom", "NS-W Corridor","North Stairs",
-        "EW-N Corridor 1", "EW-N Corridor 2", "NE Washroom",
-        "NS-E Corridor 1","NS-E Corridor 2",
-        "Mess", "H-Block 1st Floor", "Big Open Ground","Reception")
+    private var items: List<String> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,6 +70,8 @@ class MainActivity : AppCompatActivity() {
         binding?.WifiScanStopBtn?.visibility = View.GONE
         binding?.WifiScanBtn?.visibility = View.VISIBLE
         mFusedLocationClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this)
+
+        items = loadLocationsFromJson()
 
         // Dropdown
         val adapter = ArrayAdapter(this, R.layout.dropdown_menu_item, R.id.dropdown_text, items)
@@ -108,6 +106,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding?.buildingtv?.text=building
+    }
+
+    private fun loadLocationsFromJson(): List<String> {
+        return try {
+            val jsonText = assets.open("locations.json").bufferedReader().use { it.readText() }
+            val jsonArray = JSONArray(jsonText)
+            val list = mutableListOf<String>()
+            for (i in 0 until jsonArray.length()) {
+                list.add(jsonArray.getString(i))
+            }
+            list
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to load locations", e)
+            emptyList()
+        }
     }
 
     private fun isLocationEnabled(): Boolean {
@@ -343,7 +356,6 @@ class MainActivity : AppCompatActivity() {
         }
         return super.dispatchTouchEvent(event)
     }
-
 
     override fun onDestroy() {
         super.onDestroy()
