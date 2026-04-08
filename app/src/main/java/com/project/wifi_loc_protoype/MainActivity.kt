@@ -38,6 +38,7 @@ import com.project.wifi_loc_protoype.utils.PermissionResultCallback
 import com.project.wifi_loc_protoype.utils.ScanRecord
 import com.project.wifi_loc_protoype.utils.ScanStorage
 import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private var binding: ActivityMainBinding? = null
@@ -111,7 +112,9 @@ class MainActivity : AppCompatActivity() {
     private fun loadLocationsFromJson(): List<String> {
         return try {
             val jsonText = assets.open("locations.json").bufferedReader().use { it.readText() }
-            val jsonArray = JSONArray(jsonText)
+            val jsonObject = JSONObject(jsonText)
+            building = jsonObject.getString("building")
+            val jsonArray = jsonObject.getJSONArray("locations")
             val list = mutableListOf<String>()
             for (i in 0 until jsonArray.length()) {
                 list.add(jsonArray.getString(i))
