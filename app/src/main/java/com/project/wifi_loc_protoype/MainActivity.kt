@@ -87,6 +87,8 @@ class MainActivity : AppCompatActivity() {
         scanRecords.addAll(loadedRecords)
         allBSSIDs.addAll(loadedBssids)
 
+        binding?.apCountText?.text = "Scans Collected : ${scanRecords.size}"
+
         updateExportButtonVisibility()
 
         binding?.WifiScanBtn?.setOnClickListener {
@@ -99,7 +101,8 @@ class MainActivity : AppCompatActivity() {
             binding?.WifiScanBtn?.visibility = View.VISIBLE
             binding!!.autoComplete.isEnabled = true
             binding!!.textInputLayout.isEnabled = true
-            binding!!.textInputLayout.alpha = 0.6f
+            binding?.currentFloorET?.isEnabled = true
+            binding?.textInputLayout2?.isEnabled = true
         }
 
         binding?.exportBtn?.setOnClickListener {
@@ -188,7 +191,8 @@ class MainActivity : AppCompatActivity() {
         // pause interactions
         binding!!.autoComplete.isEnabled = false
         binding!!.textInputLayout.isEnabled = false
-        binding!!.textInputLayout.alpha = 0.6f
+        binding?.currentFloorET?.isEnabled = false
+        binding?.textInputLayout2?.isEnabled = false
 
         isScanning = true
 
