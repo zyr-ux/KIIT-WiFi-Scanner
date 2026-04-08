@@ -173,6 +173,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    @SuppressLint("MissingPermission")
     private fun startRepeatingWifiScan() {
         val floorInput = binding?.currentFloorET?.text?.toString()?.toIntOrNull()
 
@@ -196,37 +197,50 @@ class MainActivity : AppCompatActivity() {
 
         isScanning = true
 
+        val wifiManager = this.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+        val receiver = object : BroadcastReceiver() {
+            @RequiresPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (!isScanning) return
+                val results = wifiManager.scanResults
+                val timestamp = System.currentTimeMillis()
+                val rssiMap = mutableMapOf<String, Int>()
+
+                for (result in results) {
+                    if (result.SSID == wifiSSID) {
+                        rssiMap[result.BSSID] = result.level
+                        allBSSIDs.add(result.BSSID)
+                    }
+                }
+
+                scanRecords.add(
+                    ScanRecord(
+                        rssiMap = rssiMap,
+                        latitude = latitude,
+                        longitude = longitude,
+                        timestamp = timestamp,
+                        building = building,
+                        area = selected,
+                        floor = floorInput
+                    )
+                )
+
+                ScanStorage.save(this@MainActivity, scanRecords, allBSSIDs)
+                updateExportButtonVisibility()
+                binding?.apCountText?.text = "Scans Collected : ${scanRecords.size}"
+            }
+        }
+
+        currentReceiver = receiver
+        val intentFilter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+        this.registerReceiver(receiver, intentFilter)
+
         scanRepeater = object : Runnable {
             override fun run() {
                 if (!isScanning) return
                 getLocation()
-                wifi_scanner(this@MainActivity) { results ->
-                    val timestamp = System.currentTimeMillis()
-                    val rssiMap = mutableMapOf<String, Int>()
-
-                    for (result in results) {
-                        if (result.SSID == wifiSSID) {
-                            rssiMap[result.BSSID] = result.level
-                            allBSSIDs.add(result.BSSID)
-                        }
-                    }
-
-                    scanRecords.add(
-                        ScanRecord(
-                            rssiMap = rssiMap,
-                            latitude = latitude,
-                            longitude = longitude,
-                            timestamp = timestamp,
-                            building = building,
-                            area = selected,
-                            floor = floorInput
-                        )
-                    )
-
-                    ScanStorage.save(this@MainActivity, scanRecords, allBSSIDs)
-                    updateExportButtonVisibility()
-                    binding?.apCountText?.text = "Scans Collected : ${scanRecords.size}"
-                }
+                wifiManager.startScan()
                 handler.postDelayed(this, scanIntervalMillis)
             }
         }
@@ -254,92 +268,67 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun wifi_scanner(context: Context, onScanCompleted: (List<ScanResult>) -> Unit) {
-        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-
-        val receiver = object : BroadcastReceiver() {
-            @RequiresPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                try {
-                    context.unregisterReceiver(this)
-                    if (!isScanning) return   // ignore results if scanning stopped
-                    val results = wifiManager.scanResults
-                    onScanCompleted(results)
-                } catch (_: IllegalArgumentException) {
-                    // receiver already unregistered
+    private fun getLocation() {
+        mFusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { location: Location? ->
+                if (location != null) {
+                    latitude = location.latitude
+                    longitude = location.longitude
+                    Log.e("Lat", "$latitude")
+                    Log.e("Long", "$longitude")
                 }
             }
-        }
-
-        currentReceiver = receiver
-        val intentFilter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
-        context.registerReceiver(receiver, intentFilter)
-
-        val success = wifiManager.startScan()
-        if (!success) {
-            try {
-                context.unregisterReceiver(receiver)
-            } catch (_: Exception) {}
-            if (isScanning) {
-                val results = wifiManager.scanResults
-                onScanCompleted(results)
-            }
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun getLocation() {
-        val mLocationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
-            .setMaxUpdates(1)
-            .build()
-        mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.myLooper())
-    }
-
-    private val mLocationCallback = object : LocationCallback() {
-        override fun onLocationResult(locationResult: LocationResult) {
-            val mLastLocation: Location? = locationResult.lastLocation
-            latitude = mLastLocation!!.latitude
-            longitude = mLastLocation.longitude
-            Log.e("Lat", "$latitude")
-            Log.e("Long", "$longitude")
-        }
     }
 
     private fun exportToCSV(records: List<ScanRecord>) {
-        val resolver = contentResolver
-        val csvName = "${building}_wifi_scan_export_${System.currentTimeMillis()}.csv"
+        val recordsCopy = records.toList()
+        val bssidList = allBSSIDs.toList().sorted()
 
-        val contentValues = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, csvName)
-            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/csv")
-            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Documents/WiFiScans")
-        }
+        Thread {
+            val resolver = contentResolver
+            val csvName = "${building}_wifi_scan_export_${System.currentTimeMillis()}.csv"
 
-        val uri = resolver.insert(android.provider.MediaStore.Files.getContentUri("external"), contentValues)
-        uri?.let {
-            resolver.openOutputStream(it)?.bufferedWriter().use { writer ->
-                writer?.apply {
-                    val bssidList = allBSSIDs.toList().sorted()
-                    val header = bssidList.joinToString(",") + ",Latitude,Longitude,Building,Area,Floor,Timestamp\n"
-                    write(header)
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, csvName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Documents/WiFiScans")
+            }
 
-                    for (record in records) {
-                        val row = buildString {
-                            for (bssid in bssidList) {
-                                append(record.rssiMap[bssid] ?: -110) // -110 if not seen
-                                append(",")
+            val uri = resolver.insert(android.provider.MediaStore.Files.getContentUri("external"), contentValues)
+            if (uri != null) {
+                try {
+                    resolver.openOutputStream(uri)?.bufferedWriter().use { writer ->
+                        writer?.apply {
+                            val header = bssidList.joinToString(",") + ",Latitude,Longitude,Building,Area,Floor,Timestamp\n"
+                            write(header)
+
+                            for (record in recordsCopy) {
+                                val row = buildString {
+                                    for (bssid in bssidList) {
+                                        append(record.rssiMap[bssid] ?: -110) // -110 if not seen
+                                        append(",")
+                                    }
+                                    append("${record.latitude},${record.longitude},${record.building},${record.area},${record.floor},${record.timestamp}")
+                                }
+                                write(row + "\n")
                             }
-                            append("${record.latitude},${record.longitude},${record.building},${record.area},${record.floor},${record.timestamp}")
+                            flush()
                         }
-                        write(row + "\n")
                     }
-                    flush()
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Exported to Documents/WiFiScans", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Failed to export data", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Failed to create file", Toast.LENGTH_SHORT).show()
                 }
             }
-            Toast.makeText(this, "Exported to Documents/WiFiScans", Toast.LENGTH_SHORT).show()
-        } ?: run {
-            Toast.makeText(this, "Failed to export", Toast.LENGTH_SHORT).show()
-        }
+        }.start()
     }
 
     private fun updateExportButtonVisibility() {
